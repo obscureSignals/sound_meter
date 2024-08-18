@@ -81,17 +81,6 @@ public:
     */
     void setIsLabelStrip (bool isLabelStrip = false) noexcept { m_isLabelStrip = isLabelStrip; }
 
-    /**
-     * @brief Set the meter in 'minimal' mode.
-     *
-     * In minimal mode, the meter is in it's cleanest state possible.
-     * This means no header, no tick-marks, no value, no faders and no indicator.
-     *
-     * @param minimalMode When set to true, 'minimal' mode will be enabled.
-     * @see isMinimalModeActive, autoSetMinimalMode
-     */
-    void setMinimalMode (bool minimalMode) noexcept;
-
     /** @brief Set the segment options, describing the range and colour of the segment. */
     void setSegmentOptions (SegmentOptions segmentOptions);
 
@@ -118,7 +107,6 @@ private:
     float m_currentLevel_db   = Constants::kMinLevel_db;
     float m_peakHoldLevel_db  = Constants::kMinLevel_db;
     bool  m_isDirty           = false;
-    bool  m_minimalModeActive = false;
     bool  m_isLabelStrip      = false;
 
     void updateLevelBounds();

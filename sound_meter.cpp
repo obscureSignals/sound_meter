@@ -47,7 +47,5 @@
 #include "meter/sd_MeterHelpers.cpp"
 #include "meter/sd_MeterSegment.cpp"
 #include "meter/sd_MeterLevel.cpp"
-#include "meter/sd_MeterFader.cpp"
-#include "meter/sd_MeterHeader.cpp"
 #include "meter/sd_MeterChannel.cpp"
 #include "meter/sd_MetersComponent.cpp"

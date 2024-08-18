@@ -41,18 +41,7 @@ Segment::Segment (const Options& meterOptions, const SegmentOptions& segmentOpti
     setSegmentOptions (segmentOptions);
     setMeterOptions (meterOptions);
 }
-//==============================================================================
 
-void Segment::setMinimalMode (bool minimalMode) noexcept
-{
-    if (minimalMode == m_minimalModeActive)
-        return;
-
-    m_minimalModeActive = false;
-    if (m_meterOptions.useMinimalMode && minimalMode)
-        m_minimalModeActive = true;
-    m_isDirty = true;
-}
 //==============================================================================
 
 void Segment::setSegmentOptions (SegmentOptions segmentOptions)
@@ -69,6 +58,7 @@ void Segment::setSegmentOptions (SegmentOptions segmentOptions)
 
     m_isDirty = true;
 }
+
 //==============================================================================
 
 void Segment::draw (juce::Graphics& g, const MeterColours& meterColours)
@@ -81,64 +71,57 @@ void Segment::draw (juce::Graphics& g, const MeterColours& meterColours)
         return;
     }
 
-    if (!m_meterOptions.tickMarksOnTop)
-        drawTickMarks (g, meterColours);
-
     if (!m_drawnBounds.isEmpty())
     {
-        if (m_meterOptions.useGradient)
-            g.setGradientFill (m_gradientFill);
-        else
-            g.setColour (m_segmentOptions.segmentColour);
-
+        g.setGradientFill (m_gradientFill);
+        g.setOpacity(0.8);
         g.fillRect (m_drawnBounds);
     }
 
-    if (m_meterOptions.tickMarksOnTop)
-        drawTickMarks (g, meterColours);
-
     if (m_meterOptions.showPeakHoldIndicator && !m_peakHoldBounds.isEmpty())
     {
-        g.setColour (meterColours.peakHoldColour);
+        g.setGradientFill (m_gradientFill);
+        g.setOpacity(0.8);
         g.fillRect (m_peakHoldBounds);
         m_drawnPeakHoldBounds = m_peakHoldBounds;
     }
 }
-//==============================================================================
 
-void Segment::drawTickMarks (juce::Graphics& g, const MeterColours& meterColours)
-{
-    if (m_minimalModeActive)
-        return;
-
-    g.setColour (meterColours.tickMarkColour);
-    for (const auto& tickMark: m_tickMarks)
-    {
-        if ((tickMark <= m_currentLevel_db) && !m_meterOptions.tickMarksOnTop)
-            continue;
-
-        const auto tickMarkLevelRatio = std::clamp ((tickMark - m_segmentOptions.levelRange.getStart()) / m_segmentOptions.levelRange.getLength(), 0.0f, 1.0f);
-        const auto tickMarkY          = m_segmentBounds.getY() + m_segmentBounds.proportionOfHeight (1.0f - tickMarkLevelRatio);
-        const auto tickMarkBounds =
-          juce::Rectangle<float> (m_segmentBounds.getX(), tickMarkY, m_segmentBounds.getWidth(), static_cast<float> (Constants::kTickMarkHeight));
-        g.fillRect (tickMarkBounds);
-    }
-}
 //==============================================================================
 
 void Segment::drawLabels (juce::Graphics& g, const MeterColours& meterColours) const
 {
-    g.setColour (meterColours.textColour);
-    const float fontsize = juce::jlimit (1.0f, 15.0f, m_meterBounds.getHeight() / 4.0f);  // Set font size proportionally. NOLINT
+    g.setColour (juce::Colours::lightgrey);
+    
+    const float fontsize = 12;
     g.setFont (fontsize);
-
+    
     for (const auto& tickMark: m_tickMarks)
     {
         const auto tickMarkLevelRatio = std::clamp ((tickMark - m_segmentOptions.levelRange.getStart()) / m_segmentOptions.levelRange.getLength(), 0.0f, 1.0f);
-        const auto tickMarkY          = m_segmentBounds.getY() + m_segmentBounds.proportionOfHeight (1.0f - tickMarkLevelRatio);
-        const auto labelBounds        = juce::Rectangle<float> (m_segmentBounds.getX(), tickMarkY - (fontsize / 2.0f), m_segmentBounds.getWidth(), fontsize);
-
-        g.drawFittedText (juce::String (std::abs (tickMark)), labelBounds.reduced (Constants::kLabelStripTextPadding, 0).toNearestInt(), juce::Justification::topLeft, 1);
+        
+        const auto tickMarkY = m_segmentBounds.getY() + m_segmentBounds.proportionOfHeight (1.0f - tickMarkLevelRatio);
+        
+        const auto tickLabelString = juce::String (std::abs (tickMark));
+        
+        const auto strWidth = g.getCurrentFont().getStringWidth(tickLabelString);
+        
+        int tickWidth = floor((m_meterBounds.getWidth() - strWidth)/2)-2;
+        
+        const auto leftTickMarkBounds = juce::Rectangle<float> (m_meterBounds.getX(),
+                                                                tickMarkY,
+                                                                tickWidth,
+                                                                static_cast<float> (Constants::kTickMarkHeight));
+        g.fillRect (leftTickMarkBounds);
+        const auto rightTickMarkBounds = juce::Rectangle<float> (m_meterBounds.getX()+m_meterBounds.getWidth()-tickWidth, 
+                                                                 tickMarkY,
+                                                                 tickWidth,
+                                                                 static_cast<float> (Constants::kTickMarkHeight));
+        g.fillRect (rightTickMarkBounds);
+        
+        const auto labelBounds        = juce::Rectangle<float> (0, tickMarkY - (fontsize / 2.0f), m_meterBounds.getWidth(), fontsize);
+                    
+        g.drawFittedText (tickLabelString, labelBounds.reduced (Constants::kLabelStripTextPadding, 0).toNearestInt(), juce::Justification::centred, 1);
     }
 }
 //==============================================================================
@@ -153,9 +136,7 @@ void Segment::setMeterBounds (juce::Rectangle<int> meterBounds)
     updateLevelBounds();
     updatePeakHoldBounds();
 
-    if (m_meterOptions.useGradient)
-        m_gradientFill =
-          juce::ColourGradient (m_segmentOptions.segmentColour, segmentBounds.getBottomLeft(), m_segmentOptions.nextSegmentColour, segmentBounds.getTopLeft(), false);
+    m_gradientFill = juce::ColourGradient (m_segmentOptions.segmentColour, segmentBounds.getBottomLeft(), m_segmentOptions.nextSegmentColour, segmentBounds.getTopLeft(), false);
 
     m_isDirty = true;
 }

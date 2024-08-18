@@ -47,24 +47,20 @@ namespace Constants
 static constexpr auto kMaxWidth                = 500.0f;   ///< Maximum meter width (in pixels).
 static constexpr auto kPeakHoldHeight          = 2;        ///< Height of the peak hold strip (in pixels).
 static constexpr auto kDefaultHeaderHeight     = 25;       ///< Default height of the 'header' part (in pixels).
+//static constexpr auto kDefaultClipHeight       = 4;        ///< Default height of the clip indicator part (in pixels).
 static constexpr auto kDefaultHeaderLabelWidth = 30;       ///< Default 'header' label width (in pixels).
 static constexpr auto kDefaultHeaderFontHeight = 14.0f;    ///< Default height of the font used in the 'header' part (in pixels).
 static constexpr auto kLabelStripTextPadding   = 2;        ///< Padding around the text in a label strip (in pixels).
-static constexpr auto kLabelStripLeftPadding   = 5;        ///< Padding (in pixels) on the left side of the label strip (which can double as a master fader).
 static constexpr auto kFaderRightPadding       = 1;        ///< Padding (in pixels) on the right side of the channel faders.
 static constexpr auto kMaxLevel_db             = 0.0f;     ///< Maximum meter level (in db).
 static constexpr auto kMinLevel_db             = -96.0f;   ///< Minimum meter level (in db).
 static constexpr auto kMinDecay_ms             = 100.0f;   ///< Minimum meter decay speed (in milliseconds).
 static constexpr auto kMaxDecay_ms             = 4000.0f;  ///< Maximum meter decay speed (in milliseconds).
 static constexpr auto kDefaultDecay_ms         = 1000.0f;  ///< Default meter decay speed (in milliseconds).
-static constexpr auto kTickMarkHeight          = 2;        ///< Height of a tick mark (in pixels).
-static constexpr auto kFaderFadeTime_ms        = 2500;     ///< Fader fade out time (in milliseconds).
-static constexpr auto kFaderSensitivity        = 10.0f;    ///< Fader sensitivity value. Must be a positive value > 0.
-static constexpr auto kFaderAlphaMax           = 0.3f;     ///< Maximum transparency (alpha) of the fader overlay.
+static constexpr auto kPeakDefaultDecay_ms     = 2000.0f;  ///< Default meter decay speed (in milliseconds).
+static constexpr auto kTickMarkHeight          = 1;        ///< Height of a tick mark (in pixels).
 static constexpr auto kMinModeHeightThreshold = 150.0f;  ///< Meter minimum mode height threshold in pixels (min. mod is just the meter. not value, ticks or fader).
 static constexpr auto kMinModeWidthThreshold = 30.0f;  ///< Meter minimum mode width threshold in pixels (min. mod is just the meter. not value, ticks or fader).
-static constexpr auto kMetersId = "meters_panel";  ///< ID (name) of all components in the meters panel.
-static constexpr auto kLabelStripId  = "label_strip";   ///< ID (name) of the label-strip (master fader).
 }  // namespace Constants
 
 /**
@@ -104,16 +100,13 @@ struct SegmentOptions
 struct Options
 {
     bool  enabled          = true;  ///< Enable the meter.
-    bool  headerEnabled    = true;  ///< Enable the 'header' part of the meter.
-    bool  valueEnabled     = true;  ///< Enable the 'value' part of the meter.
-    bool  faderEnabled     = true;  ///< Enable the fader (overlay-ed over the meter). Only works if fader have been enabled in the module.
-    bool  useMinimalMode   = true;  ///< Automatically adapt the meter to use the most of the space available (by hiding header, value, tick-marks, etc...).
+    bool  valueEnabled     = false;  ///< Enable the 'value' part of the meter.
     float decayTime_ms     = Constants::kDefaultDecay_ms;  ///< Meter decay in milliseconds.
+    float peakDecayTime_ms = Constants::kPeakDefaultDecay_ms;  ///< Peak hold decay in milliseconds.
     float refreshRate      = 30.0f;                        ///< Meter refresh rate when using internal timing.
-    bool  tickMarksEnabled = true;                         ///< Show tick-marks. Divider lines on the meter at certain db levels.
-    bool  tickMarksOnTop   = false;       ///< Show the tick-marks below the level or above the level (level might obscure the tick-marks if loud enough).
-    bool  useGradient      = true;        ///< Use gradients for the meter segments, in stead of solid colours.
     bool  showPeakHoldIndicator  = true;  ///< Enable peak hold indicator.
+    bool  showClipIndicator  = true;        ///< Enable clip indicator.
+    juce::Colour clipIndicatorColor  = juce::Colours::crimson;
     std::vector<float> tickMarks = { 0.0f, -3.0f, -6.0f, -9.0f, -12.0f, -18.0f, -30.0f, -40.0f, -50.0f };  ///< Tick-mark position in db.
 };
 
@@ -125,13 +118,9 @@ struct MeterColours
     juce::Colour backgroundColour    = juce::Colours::black;                                       ///< Background colour of the meter.
     juce::Colour inactiveColour      = juce::Colours::grey;                                        ///< Colour of the meter when inactive.
     juce::Colour textValueColour     = juce::Colours::white.darker (0.6f);                         ///< Colour of the peak value text.
-    juce::Colour muteColour          = juce::Colours::red;                                         ///< Colour of the mute button.
-    juce::Colour muteMouseOverColour = juce::Colours::black;                                       ///< Colour of the mute button when the mouse is over it.
-    juce::Colour faderColour         = juce::Colours::blue.withAlpha (Constants::kFaderAlphaMax);  ///< Colour of the fader overlay.
     juce::Colour textColour          = juce::Colours::white.darker (0.6f);                         ///< Colour of the text (in the header and label strip).
-    juce::Colour tickMarkColour      = juce::Colours::white.darker (0.3f).withAlpha (0.5f);        ///< Colour of the tick-marks.
+    juce::Colour tickMarkColour      = juce::Colours::white;                                       ///< Colour of the tick-marks.
     juce::Colour peakHoldColour      = juce::Colours::red;                                         ///< Colour of the peak hold indicator.
-    juce::Colour solodColour         = juce::Colours::yellow;                                      ///< Colour of the solo button.
 };
 
 /**
@@ -186,7 +175,8 @@ enum class LabelStripPosition
 {
     left,   ///< Left of the meters.
     right,  ///< Right of the meters.
-    none    ///< No label strip will be shown.
+    none,   ///< No label strip will be shown.
+    center
 };
 
 namespace Helpers

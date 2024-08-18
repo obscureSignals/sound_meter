@@ -142,17 +142,6 @@ public:
     [[nodiscard]] float getPeakHoldLevel() const noexcept;
 
     /**
-     * @brief Set the meter in 'minimal' mode.
-     *
-     * In minimal mode, the meter is in it's cleanest state possible.
-     * This means no header, no tick-marks, no value, no faders and no indicator.
-     *
-     * @param minimalMode When set to true, 'minimal' mode will be enabled.
-     * @see isMinimalModeActive, autoSetMinimalMode
-    */
-    void setMinimalMode (bool minimalMode);
-
-    /**
      * @brief Sets the meter's refresh rate.
      *
      * Set this to optimize the meter's decay rate.
@@ -221,7 +210,11 @@ public:
      * @return The bounds of the 'value' part of the meter.
      * @see setMeterBounds, setValueBounds, getMeterBounds, getDirtyBounds, getLevelBounds
     */
-    [[nodiscard]] juce::Rectangle<int> getValueBounds() const noexcept { return m_valueBounds; }
+    
+    void setClipInd ();
+    void resetClipInd ();
+
+    [[nodiscard]] juce::Rectangle<int> getClipIndBounds() const noexcept { return m_clipIndBounds; }
 
     /**
      * @brief Get the bounds of the 'meter' part.
@@ -243,19 +236,14 @@ public:
     [[nodiscard]] juce::Rectangle<int> getDirtyBounds();
 
     /**
-     * @brief Check if the mouse cursor is over the 'value' part of the meter.
+     * @brief Check if the mouse cursor is over the 'clip indicator' part of the meter.
      *
      * @param y The y coordinate (relative to the meter bounds) to use to determine if the mouse if over the 'value' part of the meter.
-     * @return True, if the mouse cursor is over the 'value' part of the meter.
+     * @return True, if the mouse cursor is over the 'clip indicator' part of the meter.
     */
-    bool isMouseOverValue (int y);
+    bool isMouseOverClipInd (int y);
 
-    /**
-     * @brief Check if the mouse cursor is over the 'value' part of the meter.
-     *
-     * @return True, if the mouse cursor is over the 'value' part of the meter.
-    */
-    [[nodiscard]] bool isMouseOverValue() const noexcept { return m_mouseOverValue; }
+    [[nodiscard]] bool isMouseOverClipInd() const noexcept { return m_mouseOverClipInd; }
 
     /**
      * @brief Reset 'mouse over' status of the 'value' part of the meter.
@@ -270,17 +258,11 @@ public:
      *
      * @see drawInactiveMeter, drawPeakValue, drawPeakHold, drawTickMarks, drawLabels
     */
-    void drawMeter (juce::Graphics& g, const MeterColours& meterColours);
+    
+    void resetMouseOverClipInd() noexcept { m_mouseOverClipInd = false; }
 
-    /**
-     * @brief Draw the 'meter' part in it's inactive (muted) state.
-     *
-     * @param[in,out] g            The juce graphics context to use.
-     * @param         meterColours The colours to use to draw the meter.
-     *
-     * @see drawMeter, drawTickMarks, drawPeakValue, drawPeakHold, drawLabels
-    */
-    void drawInactiveMeter (juce::Graphics& g, const MeterColours& meterColours) const;
+    
+    void drawMeter (juce::Graphics& g, const MeterColours& meterColours);
 
     /**
      * @brief Draw the peak 'value'.
@@ -290,7 +272,9 @@ public:
      * @see drawMeter, drawInactiveMeter, drawInactiveMeter, drawPeakHold, drawTickMarks, drawLabels
     */
     void drawPeakValue (juce::Graphics& g, const MeterColours& meterColours) const;
-
+    
+    void drawClipInd (juce::Graphics& g, const MeterColours& meterColours) const;
+    
 private:
     Options                     m_meterOptions;
     std::vector<SegmentOptions> m_segmentOptions = MeterScales::getDefaultScale();
@@ -300,21 +284,26 @@ private:
     juce::Rectangle<int> m_valueBounds {};  // Bounds of the value area.
     juce::Rectangle<int> m_meterBounds {};  // Bounds of the meter area.
     juce::Rectangle<int> m_levelBounds {};  // Bounds of the level area.
+    juce::Rectangle<int> m_clipIndBounds {};  // Bounds of clip indicator area.
+
+    
 
     // Meter levels...
     std::atomic<float> m_inputLevel { 0.0f };  // Audio peak level.
     std::atomic<bool>  m_inputLevelRead { false };
     float              m_meterLevel_db       = Constants::kMinLevel_db;  // Current meter level.
     bool               m_peakHoldDirty       = false;
+    bool               m_clipDirty           = false;
     bool               m_mouseOverValue      = false;
-    bool               m_minimalModeActive   = false;
+    bool               m_mouseOverClipInd    = false;
     bool               m_isLabelStrip        = false;
-    float              m_decayCoeff          = 0.0f;
     float              m_refreshPeriod_ms    = (1.0f / m_meterOptions.refreshRate) * 1000.0f;  // NOLINT
     int                m_previousRefreshTime = 0;
+    int                m_previousPeakHoldTime = 0; 
+    float              m_totalPeakHoldTimePassed = 0.0f;
     float              m_decayRate           = 0.0f;  // Decay rate in dB/ms.
+    bool               m_clip                = false; // Clip has occured
 
-    [[nodiscard]] float getDecayedLevel (float newLevel_db);
     [[nodiscard]] float getLinearDecayedLevel (float newLevel_db);
     void                calculateDecayCoeff (const Options& meterOptions);
     void                synchronizeMeterOptions();

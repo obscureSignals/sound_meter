@@ -44,27 +44,27 @@ Level::Level()
 
 void Level::drawMeter (juce::Graphics& g, const MeterColours& meterColours)
 {
+    const auto currentTime = static_cast<int> (juce::Time::getMillisecondCounter());
+    const auto timePassed  = static_cast<float> (currentTime - static_cast<int> (m_previousPeakHoldTime));
+    m_totalPeakHoldTimePassed = m_totalPeakHoldTimePassed + timePassed;
+    m_previousPeakHoldTime = currentTime;
+    
+    if (m_totalPeakHoldTimePassed >= m_meterOptions.peakDecayTime_ms){
+        m_totalPeakHoldTimePassed = 0.0f;
+        resetPeakHold();
+    }
+    
+    setClipInd ();
+    
     for (auto& segment: m_segments)
         segment.draw (g, meterColours);
-
+    
     if (!m_valueBounds.isEmpty())
         drawPeakValue (g, meterColours);
-}
-//==============================================================================
+    
+    if (!m_meterBounds.isEmpty() && !m_isLabelStrip)
+        drawClipInd(g, meterColours);
 
-void Level::drawInactiveMeter (juce::Graphics& g, const MeterColours& meterColours) const
-{
-    // Check if there is space enough to write the 'MUTE' text...
-    if (static_cast<float> (m_meterBounds.getWidth()) < (g.getCurrentFont().getHeight()))
-        return;
-
-    g.saveState();
-    g.addTransform (juce::AffineTransform::rotation (juce::MathConstants<float>::halfPi, static_cast<float> (m_meterBounds.getCentreX()),
-                                                     static_cast<float> (m_meterBounds.getY() + (m_meterBounds.getWidth() / 2.0f))));  // NOLINT
-    g.setColour (meterColours.textColour.darker (0.7f));                                                                               // NOLINT
-
-    g.drawText (TRANS ("MUTE"), m_meterBounds.withWidth (m_meterBounds.getHeight()).withHeight (m_meterBounds.getWidth()), juce::Justification::centred);
-    g.restoreState();
 }
 //==============================================================================
 
@@ -75,12 +75,39 @@ void Level::drawPeakValue (juce::Graphics& g, const MeterColours& meterColours) 
 
     // Draw PEAK value...
     const auto peak_db = getPeakHoldLevel();
+        
     if (peak_db > m_meterRange.getStart())  // If active, present and enough space is available.
     {
         const int precision = peak_db <= -10.0f ? 1 : 2;  // Set precision depending on peak value. NOLINT
         g.setColour (meterColours.textValueColour);
         g.drawFittedText (juce::String (peak_db, precision), m_valueBounds, juce::Justification::centred, 1);
     }
+}
+//==============================================================================
+
+void Level::drawClipInd (juce::Graphics& g, const MeterColours& meterColours) const
+{
+    if (m_clip) {
+        g.setFillType(juce::FillType(m_meterOptions.clipIndicatorColor));
+        g.fillRect(m_clipIndBounds.getX(), m_clipIndBounds.getY(), m_clipIndBounds.getWidth(), m_clipIndBounds.getHeight());
+    }
+}
+//==============================================================================
+
+void Level::setClipInd ()
+{
+    const auto peak_db = getPeakHoldLevel();
+    if (peak_db >= 0.f){
+        m_clip = true;
+        m_clipDirty = true;
+    }
+}
+//==============================================================================\
+
+void Level::resetClipInd ()
+{
+    m_clip = false;
+    m_clipDirty = true;
 }
 //==============================================================================
 
@@ -104,7 +131,7 @@ float Level::getLinearDecayedLevel (float newLevel_db)
     const auto timePassed  = static_cast<float> (currentTime - static_cast<int> (m_previousRefreshTime));
 
     m_previousRefreshTime = currentTime;
-
+    
     if (newLevel_db >= m_meterLevel_db)
         return newLevel_db;
 
@@ -112,43 +139,10 @@ float Level::getLinearDecayedLevel (float newLevel_db)
 }
 //==============================================================================
 
-float Level::getDecayedLevel (const float newLevel_db)
-{
-    const auto currentTime = static_cast<int> (juce::Time::getMillisecondCounter());
-    const auto timePassed  = static_cast<float> (currentTime - static_cast<int> (m_previousRefreshTime));
-
-    // A new frame is not needed yet, return the current value...
-    if (timePassed < m_refreshPeriod_ms)
-        return m_meterLevel_db;
-
-    m_previousRefreshTime = currentTime;
-
-    if (newLevel_db >= m_meterLevel_db)
-        return newLevel_db;
-
-    // More time has passed then the meter decay. The meter has fully decayed...
-    if (timePassed > m_meterOptions.decayTime_ms)
-        return newLevel_db;
-
-    if (m_meterLevel_db == newLevel_db)
-        return newLevel_db;
-
-    // Convert that to refreshed frames...
-    auto numberOfFramePassed = static_cast<int> (std::round ((timePassed * m_meterOptions.refreshRate) / 1000.0f));  // NOLINT
-
-    auto level_db = m_meterLevel_db;
-    for (int frame = 0; frame < numberOfFramePassed; ++frame)
-        level_db = newLevel_db + (m_decayCoeff * (level_db - newLevel_db));
-
-    if (std::abs (level_db - newLevel_db) < Constants::kMinLevel_db)
-        level_db = newLevel_db;
-
-    return level_db;
-}
-//==============================================================================
-
 void Level::refreshMeterLevel()
 {
+    setClipInd();
+    
     m_meterLevel_db = getLinearDecayedLevel (getInputLevel());
 
     if (m_meterLevel_db > getPeakHoldLevel())
@@ -165,6 +159,7 @@ void Level::setMeterOptions (const Options& meterOptions)
 
     calculateDecayCoeff (meterOptions);
     synchronizeMeterOptions();
+    
 }
 //==============================================================================
 
@@ -174,7 +169,6 @@ void Level::synchronizeMeterOptions()
     {
         segment.setMeterOptions (m_meterOptions);
         segment.setIsLabelStrip (m_isLabelStrip);
-        segment.setMinimalMode (m_minimalModeActive);
     }
 
     m_peakHoldDirty = true;
@@ -190,7 +184,8 @@ void Level::setMeterSegments (const std::vector<SegmentOptions>& segmentsOptions
         m_meterRange.setStart (std::min (m_meterRange.getStart(), segmentOptions.levelRange.getStart()));
         m_meterRange.setEnd (std::max (m_meterRange.getEnd(), segmentOptions.levelRange.getEnd()));
     }
-
+    for (auto& segment: m_segments)
+        segment.setMeterBounds (m_levelBounds);
     synchronizeMeterOptions();
     calculateDecayCoeff (m_meterOptions);
 }
@@ -207,18 +202,6 @@ void Level::reset()
 void Level::setIsLabelStrip (bool isLabelStrip) noexcept
 {
     m_isLabelStrip = isLabelStrip;
-    synchronizeMeterOptions();
-}
-//==============================================================================
-
-void Level::setMinimalMode (bool minimalMode)
-{
-    if (m_minimalModeActive == minimalMode)
-        return;
-
-    m_minimalModeActive = minimalMode;
-
-    setMeterBounds (m_meterBounds);
     synchronizeMeterOptions();
 }
 //==============================================================================
@@ -253,6 +236,7 @@ float Level::getPeakHoldLevel() const noexcept
         return Constants::kMinLevel_db;
 
     return m_segments[0].getPeakHold();
+    
 }
 //==============================================================================
 
@@ -260,20 +244,32 @@ void Level::setMeterBounds (const juce::Rectangle<int>& bounds)
 {
     if (bounds == m_meterBounds)
         return;
-
+    
     m_meterBounds = bounds;
     m_levelBounds = m_meterBounds;
 
-    // If the meter is in minimal mode, the value is not displayed...
-    if (m_meterOptions.valueEnabled && !m_minimalModeActive)
-        m_valueBounds = m_levelBounds.removeFromBottom (Constants::kDefaultHeaderHeight);
+    if (m_meterOptions.valueEnabled)
+        m_valueBounds = m_levelBounds.removeFromBottom(Constants::kDefaultHeaderHeight);
     else
         m_valueBounds = juce::Rectangle<int>();
-
+    
+    if (m_meterOptions.showClipIndicator)
+        m_clipIndBounds = m_levelBounds.removeFromTop (12);
+    else
+        m_clipIndBounds = juce::Rectangle<int>();
+    
     for (auto& segment: m_segments)
         segment.setMeterBounds (m_levelBounds);
+    
+    if (m_meterOptions.showClipIndicator)
+        m_clipIndBounds.setHeight(6);
+
+    if (m_isLabelStrip)
+        m_clipIndBounds = juce::Rectangle<int>();
 
     m_peakHoldDirty = true;
+    m_clipDirty = true;
+    
 }
 //==============================================================================
 
@@ -291,6 +287,12 @@ juce::Rectangle<int> Level::getDirtyBounds()
         dirtyBounds     = dirtyBounds.getUnion (m_valueBounds);
         m_peakHoldDirty = false;
     }
+    
+    if (m_clipDirty)
+    {
+        dirtyBounds     = dirtyBounds.getUnion (m_clipIndBounds);
+        m_clipDirty     = false;
+    }
 
     return dirtyBounds;
 }
@@ -303,16 +305,15 @@ void Level::calculateDecayCoeff (const Options& meterOptions)
     m_refreshPeriod_ms          = (1.0f / m_meterOptions.refreshRate) * 1000.0f;  // NOLINT
 
     m_decayRate = m_meterRange.getLength() / m_meterOptions.decayTime_ms;
-
-    // Rises to 99% of in value over duration of time constant.
-    m_decayCoeff = std::pow (0.01f, (1000.0f / (m_meterOptions.decayTime_ms * m_meterOptions.refreshRate)));  // NOLINT
 }
 //==============================================================================
 
-bool Level::isMouseOverValue (const int y)
+bool Level::isMouseOverClipInd (const int y)
 {
-    m_mouseOverValue = (y >= m_valueBounds.getY() && !m_valueBounds.isEmpty());
-    return m_mouseOverValue;
+    m_mouseOverClipInd = (y >= m_clipIndBounds.getY() && !m_clipIndBounds.isEmpty());
+    return m_mouseOverClipInd;
 }
+
+
 }  // namespace SoundMeter
 }  // namespace sd
